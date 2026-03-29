@@ -53,6 +53,8 @@ The `mcp_server.py` exposes the following tools to the Lead Agent via the Model 
 *   **`check_worker_status(workspace_dir: str, task_id: int)`**: Gets the detailed status and description of a single specific task.
 *   **`read_worker_results(workspace_dir: str, task_id: int)`**: Reads the full description and final results of a background worker. Acts as the scratchpad communication reader.
 
+[![Pasted-image-20260329110336.png](https://i.postimg.cc/W4k8n8FH/Pasted-image-20260329110336.png)](https://postimg.cc/wt9DxhkX)
+[![image.png](https://i.postimg.cc/C51fvMrb/image.png)](https://postimg.cc/zbsBvNrf)
 ##  How to Set Up the MCP Server in Different AI Agents
 
 To use this Swarm architecture, you must configure your Lead AI Agent to connect to the MCP server.
