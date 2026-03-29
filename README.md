@@ -1,60 +1,91 @@
-# CTF-solver
+# CTF Swarm Worker MCP
 
-An autonomous, concurrent "Agent-Directed Swarm" system for solving Capture The Flag (CTF) challenges using AI CLI tools (`geminicli` and `copilotcli`).
+An autonomous, concurrent **Agent-Directed Swarm** system for solving Capture The Flag (CTF) challenges.
 
-Unlike rigid, sequential problem-solvers, this system allows a Lead AI Agent to dynamically spawn concurrent Worker Agents to handle parallelizable tasks (like fuzzing, reverse engineering, or brute-forcing) while it continues to build the final exploit.
+This project facilitates a Model Context Protocol (MCP) server designed to empower a Lead AI Agent (such as Gemini or Copilot) to dynamically spawn, manage, and communicate with background Worker Agents. Instead of a rigid, sequential problem-solving loop, this architecture enables parallelized tasks—like fuzzing a web endpoint while simultaneously reverse-engineering a binary.
 
-## Core Philosophy
+## 🎯 Aim
 
-1.  **Native Execution:** Agents run directly on the host (or within a single Docker container), allowing them to write bash scripts, compile C code, run `gdb`, and execute exploits without restrictive sandbox abstractions.
-2.  **The Swarm:** The AI decides when a task is too slow or independent and delegates it to background worker processes.
-3.  **CLI-Native Communication:** Agents coordinate not through fragile JSON parsing, but by executing a native command-line tool (`ctf_task.py`) built directly into their environment.
+The primary aim of this project is to provide a lead tool with the ability to spawn worker agents and cooperatively solve complex CTF challenges. By leveraging MCP, the Lead Agent can delegate tedious, time-consuming, or isolated tasks to specialized background workers, allowing it to focus on coordinating results and constructing the final exploit logic.
 
-## Usage
+## ✨ 4 Core Functions Facilitated
 
-*Note: Ensure you have `geminicli` and `gh copilot` installed and authenticated on your host system before running.*
+This project is built around four central capabilities to orchestrate the swarm:
 
-### 1. Set up the Workspace
-Create a directory for your target challenge and place the relevant files inside.
+1. **A Database of History**: Maintains a persistent SQLite database (`task_db.sqlite`) in the workspace. It records every task, its current status (`PENDING`, `IN_PROGRESS`, `COMPLETED`, `FAILED`), and its results. This ensures the Lead Agent can reliably query past actions and track the swarm's progress.
+2. **A Scratchpad for Communications Between Child Workers**: The task database acts as an asynchronous scratchpad. Lead and Worker Agents communicate natively by creating tasks and posting results. Workers write their findings to the database when complete, which the Lead Agent can later read and integrate into its exploitation strategy.
+3. **Read the Codebase Document and Explain the Architecture**: The structure inherently separates concerns. A background Python daemon (Orchestrator) manages process lifecycle, while the MCP server exposes the necessary tools for AI agents to comprehend the state of the swarm and architecture, managing files and context seamlessly. (For a deep dive, see [Architecture](#architecture)).
+4. **Task Delegation and Spawning (Concurrency)**: The Lead Agent can dynamically spawn distinct worker agents (e.g., Copilot for rapid syntax generation, Gemini for large context analysis) to run natively on the host machine.
 
-```bash
-mkdir -p workspace/pwn_buffer_overflow
-cp vuln_bin source.c workspace/pwn_buffer_overflow/
+## 🏗️ Architecture
+
+This system implements an **Agent-Directed Swarm** paradigm designed for maximum autonomy, concurrency, and context awareness.
+
+*   **The Lead Agent**: The primary AI session driving the CTF solution. It explores the workspace, identifies parallelizable sub-tasks (e.g., cracking a hash, fuzzing a port), and uses the MCP tools to delegate them.
+*   **The Orchestrator (`orchestrator.py`)**: A background daemon that monitors the Task Database. When a new task is created, it spawns a fresh Worker Agent process to execute it, manages the output logs, and handles timeouts or crashes.
+*   **The Worker Agents (`agents/gemini_wrap.py`, `agents/copilot_wrap.py`)**: Wrappers for native CLI tools (`geminicli`, `gh copilot`). They are spawned in the background with a specific prompt, run natively to leverage local tools (compilers, debuggers, network scanners), and report their findings back to the database via the `ctf_task.py` CLI.
+*   **Task Manager CLI (`ctf_task.py`)**: A native command-line tool that allows agents to interact with the task database directly without relying on fragile JSON parsing.
+
+For more details, please refer to the `Architecture.md` file included in this repository.
+
+## 🚀 How to Run
+
+1. **Set up the Workspace**: Create a directory for your target challenge and place the relevant files inside.
+   ```bash
+   mkdir -p workspace/pwn_challenge
+   cp vuln_bin source.c workspace/pwn_challenge/
+   echo "Initial hints here" > workspace/pwn_challenge/notes.md
+   ```
+
+2. **Launch the Orchestrator**: Point the orchestrator at the workspace and provide the challenge category. This initializes the Task DB and starts the daemon.
+   ```bash
+   python orchestrator.py solve --dir ./workspace/pwn_challenge --category pwn
+   ```
+
+3. **Run the MCP Server**: Start the FastMCP server to expose the swarm management tools to your Lead AI Agent.
+   ```bash
+   python mcp_server.py
+   ```
+
+## 🛠️ All Functionalities (MCP Tools)
+
+The `mcp_server.py` exposes the following tools to the Lead Agent via the Model Context Protocol:
+
+*   **`spawn_copilot_worker(workspace_dir: str, description: str)`**: Spawns an asynchronous Github Copilot worker to perform a long-running subtask. Creates a database entry and triggers the Orchestrator.
+*   **`spawn_gemini_worker(workspace_dir: str, description: str)`**: Spawns an asynchronous Gemini worker to perform a long-running subtask. Creates a database entry and triggers the Orchestrator.
+*   **`list_tasks(workspace_dir: str)`**: Lists all spawned worker tasks and their current statuses (e.g., `PENDING`, `COMPLETED`). Acts as the history database interface.
+*   **`check_worker_status(workspace_dir: str, task_id: int)`**: Gets the detailed status and description of a single specific task.
+*   **`read_worker_results(workspace_dir: str, task_id: int)`**: Reads the full description and final results of a background worker. Acts as the scratchpad communication reader.
+
+## ⚙️ How to Set Up the MCP Server in Different AI Agents
+
+To use this Swarm architecture, you must configure your Lead AI Agent to connect to the MCP server.
+
+### Claude Desktop
+
+Add the following to your `claude_desktop_config.json` (usually located at `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+
+```json
+{
+  "mcpServers": {
+    "ctf-swarm-worker": {
+      "command": "python",
+      "args": [
+        "/absolute/path/to/ctf-coop-solver/mcp_server.py"
+      ]
+    }
+  }
+}
 ```
+*Note: Ensure you provide the absolute path to the `mcp_server.py` file.*
 
-*(Optional) Provide initial context to the agents:*
-```bash
-echo "I think there is a buffer overflow in the main() function" > workspace/pwn_buffer_overflow/notes.md
-```
+### Cursor
 
-### 2. Launch the Orchestrator
-Point the orchestrator at the workspace and provide the challenge category (e.g., pwn, web, crypto, rev).
+1. Open Cursor Settings (`Cmd/Ctrl + ,`).
+2. Navigate to **Features** > **MCP Servers**.
+3. Click **+ Add New MCP Server**.
+4. Set the Type to `command`.
+5. Name it `ctf-swarm-worker`.
+6. Set the command to: `python /absolute/path/to/ctf-coop-solver/mcp_server.py`.
 
-```bash
-python orchestrator.py solve --dir ./workspace/pwn_buffer_overflow --category pwn
-```
-
-### 3. Watch the Swarm
-The Orchestrator will:
-1. Initialize a task database in the workspace.
-2. Spawn the **Lead Agent** (typically Gemini, for its large context window).
-3. The Lead Agent will analyze the files and, if necessary, use the `ctf_task.py` tool to spawn background **Worker Agents** (e.g., Copilot, for rapid syntax generation or specific analysis).
-4. You will see live output as the Lead Agent orchestrates the workers, compiles findings, writes the final exploit, and captures the flag.
-
-## How it Works (Under the Hood)
-
-The magic happens via `ctf_task.py`. The Orchestrator is a simple daemon that watches this database.
-
-When the Lead AI runs:
-`python ctf_task.py create "Run nmap against 10.10.10.5"`
-
-The Orchestrator sees the new entry, spawns a background `copilot_wrap` process, and tells it to execute that specific prompt.
-
-When the worker finishes, it runs:
-`python ctf_task.py complete 1 "Port 80 is open."`
-
-The Lead AI can then run:
-`python ctf_task.py read 1`
-...and use that information to continue the attack.
-
-For a deep dive into the architecture, read `Architecture.md`.
+Once connected, your AI assistant will be able to spawn workers, list tasks, and read results directly from its chat interface, effectively becoming the Lead Agent of the Swarm.
