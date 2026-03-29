@@ -8,7 +8,7 @@ This project facilitates a Model Context Protocol (MCP) server designed to empow
 
 The primary aim of this project is to provide a lead tool with the ability to spawn worker agents and cooperatively solve complex CTF challenges. By leveraging MCP, the Lead Agent can delegate tedious, time-consuming, or isolated tasks to specialized background workers, allowing it to focus on coordinating results and constructing the final exploit logic.
 
-## requirements
+## Requirements
 Active Copilot subscription and/or gemini subscription. Then install [gemini-cli](https://geminicli.com/) and or [copilot-cli](https://github.com/features/copilot/cli/)
 ##  4 Core Functions Facilitated
 
@@ -28,7 +28,6 @@ This system implements an **Agent-Directed Swarm** paradigm designed for maximum
 *   **The Worker Agents (`agents/gemini_wrap.py`, `agents/copilot_wrap.py`)**: Wrappers for native CLI tools (`geminicli`, `gh copilot`). They are spawned in the background with a specific prompt, run natively to leverage local tools (compilers, debuggers, network scanners), and report their findings back to the database via the `ctf_task.py` CLI.
 *   **Task Manager CLI (`ctf_task.py`)**: A native command-line tool that allows agents to interact with the task database directly without relying on fragile JSON parsing. The `task_db.sqlite` file is created directly within the `workspace_dir` where the target application is being analyzed.
 
-For more details, please refer to the `Architecture.md` file included in this repository.
 
 ##  How to Run
 
