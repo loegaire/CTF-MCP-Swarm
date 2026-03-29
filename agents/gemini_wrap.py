@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import time
 import os
 
 def run_gemini(prompt):
@@ -15,17 +16,28 @@ def run_gemini(prompt):
         # Example: geminicli prompt "<prompt>"
 
         # We use the actual CLI invocation based on the provided help docs.
-        # We use --yolo to automatically accept actions and --prompt for headless mode.
-        result = subprocess.run(
-            ["gemini", prompt],
-            check=True
-        )
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # We use --yolo to automatically accept actions and positional argument for headless mode.
+                result = subprocess.run(
+                    ["gemini", prompt],
+                    check=True
+                )
+                break
+            except subprocess.CalledProcessError as e:
+                if attempt < max_retries - 1:
+                    sleep_time = 4 * (2 ** attempt)
+                    print(f"[Gemini Wrap Error] gemini failed with exit code {e.returncode}. Retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
+                else:
+                    print(f"[Gemini Wrap Error] gemini failed after {max_retries} attempts.")
+                    sys.exit(e.returncode)
 
     except FileNotFoundError:
         print("[Gemini Wrap Error] 'gemini' command not found. Please ensure it is installed and in your PATH.")
         # Fallback for demonstration/simulation if the user runs this without the tool installed
         print(f"[Simulated Output for Prompt]: {prompt}")
-    except subprocess.CalledProcessError as e:
         print(f"[Gemini Wrap Error] geminicli failed with error: {e.stderr}")
 
 if __name__ == "__main__":

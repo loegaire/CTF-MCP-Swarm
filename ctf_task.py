@@ -18,6 +18,13 @@ def init_db(workspace_dir="."):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS scratchpad (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
     return db_path
@@ -92,6 +99,10 @@ def read_task(task_id, workspace_dir="."):
         print(f"Error: Task #{task_id} not found.")
         sys.exit(1)
 
+    if not row:
+        print(f"Error: Task #{task_id} not found.")
+        sys.exit(1)
+
     description, status, result = row
     print(f"--- Task #{task_id} ---")
     print(f"Status: {status}")
@@ -100,6 +111,33 @@ def read_task(task_id, workspace_dir="."):
         print(f"\nResult:\n{result}")
     else:
         print("\nResult: (No result yet)")
+
+def append_scratchpad(note, workspace_dir="."):
+    db_path = os.path.join(workspace_dir, DB_FILE)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO scratchpad (note) VALUES (?)", (note,))
+    conn.commit()
+    conn.close()
+    print("Note appended to scratchpad.")
+
+def read_scratchpad(workspace_dir="."):
+    db_path = os.path.join(workspace_dir, DB_FILE)
+    if not os.path.exists(db_path):
+        return "No task database found."
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT created_at, note FROM scratchpad ORDER BY created_at ASC")
+    notes = cursor.fetchall()
+    conn.close()
+    
+    if not notes:
+        return "Scratchpad is empty."
+        
+    out = "--- Swarm Scratchpad ---\n"
+    for ts, note in notes:
+        out += f"[{ts}] {note}\n"
+    return out
 
 def set_in_progress(task_id, workspace_dir="."):
      # This is mainly for the orchestrator to use, not the agents
@@ -152,6 +190,15 @@ if __name__ == "__main__":
     # Internal Init
     parser_init = subparsers.add_parser("init", help="Initialize the database (used by Orchestrator)")
 
+    # Scratchpad
+    parser_scratch = subparsers.add_parser("scratchpad", help="Interact with the shared memory scratchpad")
+    scratch_subs = parser_scratch.add_subparsers(dest="scratch_cmd", help="Scratchpad command (append or read)")
+    
+    scratch_append = scratch_subs.add_parser("append", help="Append a note")
+    scratch_append.add_argument("note", help="The note to append")
+    
+    scratch_read = scratch_subs.add_parser("read", help="Read notes")
+
     args = parser.parse_args()
 
     # Create workspace if it doesn't exist just in case
@@ -171,5 +218,13 @@ if __name__ == "__main__":
         fail_task(args.task_id, args.error, args.workspace)
     elif args.command == "read":
         read_task(args.task_id, args.workspace)
+    elif args.command == "scratchpad":
+        init_db(args.workspace)
+        if args.scratch_cmd == "append":
+            append_scratchpad(args.note, args.workspace)
+        elif args.scratch_cmd == "read":
+            print(read_scratchpad(args.workspace))
+        else:
+            parser_scratch.print_help()
     else:
         parser.print_help()

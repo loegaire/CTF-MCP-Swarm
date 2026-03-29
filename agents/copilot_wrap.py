@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import time
 import os
 import re
 
@@ -12,19 +13,28 @@ def run_copilot(prompt):
     print(f"[Copilot Wrap Worker] Running gh copilot with prompt...")
 
     try:
-        # We use the actual CLI invocation based on the provided help docs.
-        # We use --yolo to enable all permissions (allow-all-tools, paths, urls)
-        # and --prompt for non-interactive execution.
-        result = subprocess.run(
-            ["copilot", "--yolo", "-p", prompt],
-            check=True
-        )
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # We use --yolo to automatically accept actions
+                # and -p for non-interactive execution.
+                result = subprocess.run(
+                    ["copilot", "--yolo", "-p", prompt],
+                    check=True
+                )
+                break
+            except subprocess.CalledProcessError as e:
+                if attempt < max_retries - 1:
+                    sleep_time = 4 * (2 ** attempt)
+                    print(f"[Copilot Wrap Error] gh copilot failed with exit code {e.returncode}. Retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
+                else:
+                    print(f"[Copilot Wrap Error] gh copilot failed after {max_retries} attempts.")
+                    sys.exit(e.returncode)
 
     except FileNotFoundError:
         print("[Copilot Wrap Error] 'copilot' command not found. Please ensure it is installed and in your PATH.")
         print(f"[Simulated Output for Prompt]: {prompt}")
-    except subprocess.CalledProcessError as e:
-        print(f"[Copilot Wrap Error] gh copilot failed with error: {e.stderr}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

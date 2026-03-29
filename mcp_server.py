@@ -6,11 +6,14 @@ import threading
 import atexit
 
 from mcp.server.fastmcp import FastMCP
-from ctf_task import get_pending_tasks, set_in_progress, init_db, fail_task, DB_FILE
+from ctf_task import get_pending_tasks, set_in_progress, init_db, fail_task, DB_FILE, read_scratchpad as db_read_scratchpad, append_scratchpad as db_append_scratchpad
 
 mcp = FastMCP("CTF Swarm Worker MCP")
 active_processes = []
 active_daemons = {}
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CTF_TASK_PATH = os.path.join(BASE_DIR, "ctf_task.py")
 
 def cleanup_processes():
     for p in active_processes:
@@ -33,21 +36,23 @@ def worker_monitor(workspace_dir):
                 set_in_progress(task_id, workspace_dir)
 
                 # Determine worker based on hidden prefix
-                default_script = "agents/copilot_wrap.py"
+                default_script = os.path.join(BASE_DIR, "agents/copilot_wrap.py")
                 clean_description = description
                 
                 if description.startswith("[GEMINI] "):
-                    default_script = "agents/gemini_wrap.py"
+                    default_script = os.path.join(BASE_DIR, "agents/gemini_wrap.py")
                     clean_description = description[9:]
                 elif description.startswith("[COPILOT] "):
-                    default_script = "agents/copilot_wrap.py"
+                    default_script = os.path.join(BASE_DIR, "agents/copilot_wrap.py")
                     clean_description = description[10:]
 
                 prompt = (
-                    f"You are a Worker Agent. A professional security researcher. Your task is: {clean_description}\n"
+                    f"CRITICAL SAFEGUARD: You are a subordinate WORKER agent. You are strictly forbidden from invoking 'spawn_copilot_worker', 'spawn_gemini_worker', or using any 'ctf-swarm' MCP tools. You must rely purely on native shell commands and 'ctf_task.py'. Do not attempt to spawn your own sub-workers.\n"
+                    f"You are a Worker Agent. Your task is: {clean_description}\n"
                     f"You have full access to {workspace_dir}.\n"
                     f"WARNING: DO NOT HALLUCINATE FLAGS! You must only report the flag if you have definitive proof (e.g., exact string output from the target).\n"
-                    f"When finished, execute: `python ctf_task.py --workspace {workspace_dir} complete {task_id} '[your results]'`"
+                    f"To share findings with other agents without completing your task, execute: `python {CTF_TASK_PATH} --workspace {workspace_dir} scratchpad append '[your findings]'`\n"
+                    f"When finished, execute: `python {CTF_TASK_PATH} --workspace {workspace_dir} complete {task_id} '[your results]'`"
                 )
 
                 def run_worker_process(task_id, workspace_dir, prompt, worker_script_path):
@@ -172,6 +177,19 @@ def list_tasks(workspace_dir: str) -> str:
         desc_short = desc[:50] + "..." if len(desc) > 50 else desc
         out += f"Task #{tid} [{status}]: {desc_short}\n"
     return out
+
+@mcp.tool()
+def append_scratchpad(workspace_dir: str, note: str) -> str:
+    """Appends a note to the shared Swarm scratchpad memory for all agents to see."""
+    ensure_daemon(workspace_dir)
+    db_append_scratchpad(note, workspace_dir)
+    return "Note successfully appended to shared scratchpad."
+
+@mcp.tool()
+def read_scratchpad(workspace_dir: str) -> str:
+    """Reads all notes currently inside the shared Swarm scratchpad memory."""
+    ensure_daemon(workspace_dir)
+    return db_read_scratchpad(workspace_dir)
 
 if __name__ == "__main__":
     mcp.run()
