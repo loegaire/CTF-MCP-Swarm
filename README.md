@@ -22,29 +22,23 @@ This project is built around four central capabilities to orchestrate the swarm:
 This system implements an **Agent-Directed Swarm** paradigm designed for maximum autonomy, concurrency, and context awareness.
 
 *   **The Lead Agent**: The primary AI session driving the CTF solution. It explores the workspace, identifies parallelizable sub-tasks (e.g., cracking a hash, fuzzing a port), and uses the MCP tools to delegate them.
-*   **The Orchestrator (`orchestrator.py`)**: A background daemon that monitors the Task Database. When a new task is created, it spawns a fresh Worker Agent process to execute it, manages the output logs, and handles timeouts or crashes.
+*   **The Orchestrator Daemon (`mcp_server.py`)**: The `mcp_server.py` natively hosts the orchestrator logic. Upon tool invocation, it automatically invokes `ensure_daemon()` to launch a background daemon thread that continuously monitors the localized `task_db.sqlite` for changes. When a new task is created, this daemon spawns a fresh Worker Agent process to execute it, manages the output logs, and handles timeouts or crashes.
 *   **The Worker Agents (`agents/gemini_wrap.py`, `agents/copilot_wrap.py`)**: Wrappers for native CLI tools (`geminicli`, `gh copilot`). They are spawned in the background with a specific prompt, run natively to leverage local tools (compilers, debuggers, network scanners), and report their findings back to the database via the `ctf_task.py` CLI.
-*   **Task Manager CLI (`ctf_task.py`)**: A native command-line tool that allows agents to interact with the task database directly without relying on fragile JSON parsing.
+*   **Task Manager CLI (`ctf_task.py`)**: A native command-line tool that allows agents to interact with the task database directly without relying on fragile JSON parsing. The `task_db.sqlite` file is created directly within the `workspace_dir` where the target application is being analyzed.
 
 For more details, please refer to the `Architecture.md` file included in this repository.
 
 ## 🚀 How to Run
 
-1. **Set up the Workspace**: Create a directory for your target challenge and place the relevant files inside.
-   ```bash
-   mkdir -p workspace/pwn_challenge
-   cp vuln_bin source.c workspace/pwn_challenge/
-   echo "Initial hints here" > workspace/pwn_challenge/notes.md
-   ```
+The MCP server handles orchestration natively, so you do not need to run a standalone orchestrator. When the Lead Agent interacts with an MCP tool (e.g., `spawn_copilot_worker`), the `mcp_server.py` automatically initializes a background daemon thread (`worker_monitor`) for the requested `workspace_dir`.
 
-2. **Launch the Orchestrator**: Point the orchestrator at the workspace and provide the challenge category. This initializes the Task DB and starts the daemon.
+It also automatically calls `init_db()` (from `ctf_task.py`) to spawn a fresh SQLite database named `task_db.sqlite` inside the designated workspace. This ensures independent, localized task tracking for each CTF challenge.
+
+To get started, simply configure your Lead AI Agent to connect to the MCP server.
+
+*(Optional)* You can still run the included `orchestrator.py` if you prefer to test the pipeline in an interactive, standalone CLI mode.
    ```bash
    python orchestrator.py solve --dir ./workspace/pwn_challenge --category pwn
-   ```
-
-3. **Run the MCP Server**: Start the FastMCP server to expose the swarm management tools to your Lead AI Agent.
-   ```bash
-   python mcp_server.py
    ```
 
 ## 🛠️ All Functionalities (MCP Tools)
